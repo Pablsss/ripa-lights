@@ -1,0 +1,3 @@
+import assets from 'site-assets';
+import {api} from './api.js';
+export default {async fetch(request,env){const path=new URL(request.url).pathname;if(path.startsWith('/api/'))return api(request,env);if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405});const key=path==='/'?'/index.html':path;const text=assets[key];if(text===undefined)return new Response('Not found',{status:404});const mime=key.endsWith('.html')?'text/html':key.endsWith('.css')?'text/css':key.endsWith('.js')?'text/javascript':'text/plain';return new Response(request.method==='HEAD'?null:text,{headers:{'Content-Type':mime+'; charset=utf-8','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'}});}};
