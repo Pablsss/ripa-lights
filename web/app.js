@@ -78,6 +78,49 @@ const stopRotation=()=>{state.auto=false;orbit.autoRotate=false;$('autoRotate').
 $('helpBtn').onclick=$('sourceBtn').onclick=()=>$('help').showModal();$('closeHelp').onclick=()=>$('help').close();$('help').addEventListener('click',e=>{if(e.target===$('help')){const r=$('help').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('help').close();}});
 const ray=new THREE.Raycaster();let down;renderer.domElement.addEventListener('pointerdown',e=>down={x:e.clientX,y:e.clientY});renderer.domElement.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>5||mode==='marks')return;const r=renderer.domElement.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),camera);const hit=ray.intersectObjects(lights.filter(l=>l.group.visible).map(l=>l.sphere))[0];if(hit){selected=hit.object.userData.lightIndex;renderLightList();updateSector();updateUI();}});
 const resize=()=>{const el=$('scene'),w=el.clientWidth,h=el.clientHeight;if(w<=0||h<=0)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();};new ResizeObserver(resize).observe($('scene'));resize();rebuild(true);$('loading').hidden=true;
+// Classroom links open a still view, even when the sender was using automatic rotation.
+const params = new URLSearchParams(location.search);
+const sharedPreset = presets.find(item => item.id === params.get('vessel'));
+const numeric = (key, fallback, low, high) => {
+  const raw = params.get(key);
+  const value = raw?.trim() ? Number(raw) : NaN;
+  return Number.isFinite(value) ? Math.min(high, Math.max(low, value)) : fallback;
+};
+if (sharedPreset) {
+  preset = sharedPreset;
+  $('vessel').value = preset.id;
+  mode = ['lights', 'marks', 'both'].includes(params.get('mode')) ? params.get('mode') : 'lights';
+  const situation = params.get('state');
+  state.situation = preset.anchor && situation === 'anchor' ? 'anchor' :
+    preset.states && situation === 'stopped' ? 'stopped' : 'making';
+  $('state').value = state.situation;
+  state.sky = numeric('sky', 45, 0, 100);
+  $('sky').value = state.sky;
+  state.only = $('onlyLights').checked = params.get('only') === '1';
+  state.sector = $('sector').checked = params.get('sector') === '1';
+  for (const key of ['smallSides', 'longObject', 'longTow']) $(key).checked = params.get(key) === '1';
+  selected = Math.floor(numeric('light', 0, 0, 100));
+  rebuild(true);
+  setCamera(numeric('bearing', 45, 0, 360), numeric('elevation', 15, 3, 75),
+    numeric('distance', camera.position.distanceTo(orbit.target), 16, 100));
+  updateUI();
+}
+$('shareScene').onclick = async () => {
+  const url = new URL(location.pathname, location.origin);
+  const values = {vessel: preset.id, mode, state: state.situation, sky: state.sky,
+    bearing: Number(bearing().toFixed(2)), elevation: Number(elevation().toFixed(2)),
+    distance: Number(camera.position.distanceTo(orbit.target).toFixed(2)), light: selected};
+  for (const [key, value] of Object.entries(values)) url.searchParams.set(key, value);
+  for (const [key, id] of Object.entries({only:'onlyLights', sector:'sector', smallSides:'smallSides', longObject:'longObject', longTow:'longTow'})) {
+    if ($(id).checked) url.searchParams.set(key, '1');
+  }
+  try {
+    await navigator.clipboard.writeText(url.href);
+    $('shareStatus').textContent = 'Enlace copiado';
+  } catch {
+    window.prompt('Copia el enlace a esta vista', url.href);
+  }
+};
 const bowNote=document.createElement('p');bowNote.textContent='Vista de proa: para facilitar el alineamiento se muestran ambos costados dentro de ±0,5°. Es una tolerancia didáctica, no un cambio de los sectores nominales de 112,5°. El botón Proa fija exactamente 000° y elimina la inercia del giro anterior.';$('help').append(bowNote);
 let active=true;document.addEventListener('visibilitychange',()=>active=!document.hidden);renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();$('error').hidden=false;$('error').textContent='La escena ha perdido el contexto gráfico. Recarga la página para recuperarla.';});
 function animate(ms){requestAnimationFrame(animate);if(!active)return;orbit.update();waterMat.uniforms.time.value=ms/1000;lights.forEach((l,i)=>{l.group.visible=mode!=='marks'&&isVisible(l)&&(!l.flash||(ms%500)<240);l.sprite.scale.setScalar(i===selected?1.45:1.1);});if(ms-lastUI>120){updateUI();lastUI=ms;}renderer.render(scene,camera);}requestAnimationFrame(animate);
